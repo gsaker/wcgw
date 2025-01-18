@@ -89,7 +89,6 @@ TIMEOUT = 5
 TIMEOUT_WHILE_OUTPUT = 20
 OUTPUT_WAIT_PATIENCE = 3
 
-
 def render_terminal_output(text: str) -> list[str]:
     screen = pyte.Screen(160, 500)
     screen.set_mode(pyte.modes.LNM)
@@ -400,6 +399,8 @@ def initialize(
     task_id_to_resume: str,
     max_tokens: Optional[int],
     mode: ModesConfig,
+    ssh_target: Optional[str],
+    ssh_user: Optional[str],
 ) -> str:
     global BASH_STATE
 
@@ -483,6 +484,8 @@ def initialize(
         )
     del mode
 
+
+
     initial_files_context = ""
     if read_files_:
         if folder_to_start:
@@ -507,6 +510,54 @@ def initialize(
         mode_prompt = ARCHITECT_PROMPT
     else:
         mode_prompt = WCGW_PROMPT
+        if ssh_target:
+            if ssh_user:
+                user = ssh_user
+            else:
+                user = "root"
+            if BASH_STATE.state == "pending":
+                raise ValueError(WAITING_INPUT_MESSAGE)
+                
+            # First test connection with a simple command
+            command = f"ssh -n -T {user}@{ssh_target} echo 'Connected'"
+            result = execute_bash(default_enc, BashCommand(command=command), max_tokens, None)
+            
+            # If successful, establish interactive session
+            if 'Connected' in result[0]:
+                command = f"ssh {user}@{ssh_target}"
+                BASH_STATE.shell.sendline(command)
+                # Wait for new prompt from remote system
+                index = BASH_STATE.shell.expect(['.*@.*:.*[$#]', pexpect.TIMEOUT], timeout=5)
+                if index == 0:
+                    # Update PROMPT to match remote system
+                    new_prompt = BASH_STATE.shell.after
+                    PROMPT = re.escape(new_prompt)
+
+            # for i in range(0, len(command), 128):
+            #     BASH_STATE.shell.send(command[i : i + 128])
+            # BASH_STATE.shell.send(BASH_STATE.shell.linesep)
+            # timeout_s = 0.5 
+            # wait = min(timeout_s or TIMEOUT, TIMEOUT_WHILE_OUTPUT)
+            # index = BASH_STATE.shell.expect([PROMPT, pexpect.TIMEOUT], timeout=wait)
+            # if index == 1:
+            #     text = BASH_STATE.shell.before or ""
+
+            # if not isinstance(BASH_STATE.shell.before, str):
+            #     BASH_STATE.shell.before = str(BASH_STATE.shell.before)
+
+            # output = _incremental_text(BASH_STATE.shell.before, BASH_STATE.pending_output)
+            # BASH_STATE.set_repl()
+
+            # try:
+            #     exit_status = get_status()
+            #     output += exit_status
+            # except ValueError:
+            #     console.print(output)
+            #     console.print(traceback.format_exc())
+            #     console.print("Malformed output, restarting shell", style="red")
+            #     # Malformed output, restart shell
+            #     BASH_STATE.reset_shell()
+            #     output = "(exit shell has restarted)"
 
     output = f"""
 {mode_prompt}
@@ -1284,6 +1335,8 @@ def get_tool_output(
                 arg.task_id_to_resume,
                 max_tokens,
                 arg.mode,
+                arg.ssh_target,
+                arg.ssh_user
             ),
             0.0,
         )

@@ -39,6 +39,8 @@ class Initialize(BaseModel):
     any_workspace_path: str
     initial_files_to_read: list[str]
     task_id_to_resume: str
+    ssh_target: Optional[str] = None
+    ssh_user: Optional[str] = None
     mode_name: Literal["wcgw", "architect", "code_writer"]
     code_writer_config: Optional[CodeWriterMode] = None
 
